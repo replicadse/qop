@@ -1,0 +1,5 @@
+[hooks]
+pre-push = "cargo build --release && cargo test"
+
+[logging]
+verbose = true
