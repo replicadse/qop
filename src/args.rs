@@ -43,8 +43,9 @@ pub enum Command {
 
     Init,
     Apply { file: String },
-    Reverse { file: String },
     Diff { reverse: bool },
+    Reverse { file: String },
+    Checkpoint,
 }
 
 pub struct ClapArgumentLoader {}
@@ -87,20 +88,22 @@ impl ClapArgumentLoader {
                     ),
             )
             .subcommand(clap::Command::new("init").about("init"))
+            .subcommand(clap::Command::new("checkpoint").about("checkpoint").alias("cp"))
             .subcommand(
                 clap::Command::new("apply")
                     .about("Apply patch.")
                     .arg(clap::Arg::new("file").short('f').long("file").required(true)),
             )
             .subcommand(
-                clap::Command::new("reverse")
-                    .about("Reverse patch.")
-                    .arg(clap::Arg::new("file").short('f').long("file").required(true)),
-            )
-            .subcommand(
                 clap::Command::new("diff")
                 .about("diff")
-                .arg(clap::Arg::new("reverse").short('r').long("reverse").action(ArgAction::SetTrue)))
+                .arg(clap::Arg::new("reverse").short('r').long("reverse").action(ArgAction::SetTrue))
+            )
+            .subcommand(
+                clap::Command::new("reverse")
+                .about("Reverse a diff.")
+                .arg(clap::Arg::new("file").short('f').long("file").required(true)),
+            )
     }
 
     pub fn load() -> Result<CallArgs> {
@@ -128,6 +131,8 @@ impl ClapArgumentLoader {
             }
         } else if let Some(_) = command.subcommand_matches("init") {
             Command::Init
+        } else if let Some(_) = command.subcommand_matches("checkpoint") {
+            Command::Checkpoint
         } else if let Some(subc) = command.subcommand_matches("apply") {
             Command::Apply {
                 file: subc.get_one::<String>("file").unwrap().into(),

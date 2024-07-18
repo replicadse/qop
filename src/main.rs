@@ -4,10 +4,7 @@ pub mod args;
 pub mod reference;
 
 use std::{
-    collections::{
-        BTreeMap,
-        HashMap,
-    }, io::Read, path::{
+    collections::HashMap, io::Read, path::{
         Path,
         PathBuf,
     }
@@ -46,25 +43,29 @@ async fn main() -> Result<()> {
             Ok(())
         },
         | crate::args::Command::Init => {
-            init().await?;
+            write_index().await?;
+            Ok(())
+        },
+        | crate::args::Command::Checkpoint => {
+            write_index().await?;
             Ok(())
         },
         | crate::args::Command::Apply { file } => {
             apply(file).await?;
             Ok(())
         },
-        | crate::args::Command::Reverse { file } => {
-            reverse(file).await?;
-            Ok(())
-        },
         | crate::args::Command::Diff { reverse } => {
             diff(reverse).await?;
             Ok(())
         },
+        | crate::args::Command::Reverse { file } => {
+            reverse(file).await?;
+            Ok(())
+        }
     }
 }
 
-async fn init() -> Result<()> {
+async fn write_index() -> Result<()> {
     fn process_files(path: PathBuf, ignore_stack: &mut Vec<Vec<String>>) -> Result<HashMap<String, String>> {
         let mut files = HashMap::new();
         let dir = std::fs::read_dir(&path)?.filter_map(|entry| entry.ok()).collect::<Vec<_>>();
@@ -136,48 +137,40 @@ async fn diff(reverse: bool) -> Result<()> {
         } else {
             similar::TextDiff::from_lines(&wc_file_content, &store_file_content)
         };
-        for diffop in diff.ops() {
-            let mut content = Vec::<String>::new();
-            for change in diff.iter_changes(diffop) {
-                match change.tag() {
-                    | similar::ChangeTag::Delete => {
-                        content.push(format!("-{}", change.to_string()));
+
+        let mut diff_hunks = Vec::<PatchFileHunk>::new();
+        for hunk in diff.unified_diff().context_radius(0).iter_hunks() {
+            let ops = hunk.ops();
+            let first_op = ops[0];
+            let last_op = ops[ops.len() - 1];
+            
+            let mut diff = Vec::<String>::new();
+            for c in hunk.iter_changes() {
+                match c.tag() {
+                    | similar::ChangeTag::Equal => {
+                        diff.push(format!(" {}", c.value()));
                     },
                     | similar::ChangeTag::Insert => {
-                        content.push(format!("+{}", change.to_string()));
+                        diff.push(format!("+{}", c.value()));
                     },
-                    | _ => {},
+                    | similar::ChangeTag::Delete => {
+                        diff.push(format!("-{}", c.value()));
+                    },   
                 }
             }
 
-            match diffop.tag() {
-                | similar::DiffTag::Equal => {},
-                | similar::DiffTag::Delete => {
-                    patch.files.entry(path.clone()).or_insert_with(BTreeMap::new).insert(
-                        diffop.old_range().start.to_string(),
-                        PatchSection {
-                            content: content.concat(),
-                        },
-                    );
-                },
-                | similar::DiffTag::Insert => {
-                    patch.files.entry(path.clone()).or_insert_with(BTreeMap::new).insert(
-                        diffop.new_range().start.to_string(),
-                        PatchSection {
-                            content: content.concat(),
-                        },
-                    );
-                },
-                | similar::DiffTag::Replace => {
-                    patch.files.entry(path.clone()).or_insert_with(BTreeMap::new).insert(
-                        diffop.old_range().start.to_string(),
-                        PatchSection {
-                            content: content.concat(),
-                        },
-                    );
-                },
-            }
+            diff_hunks.push(PatchFileHunk {
+                old_range: (first_op.old_range().start, last_op.old_range().end),
+                new_range: (first_op.new_range().start, last_op.new_range().end),
+                diff: diff.concat(),
+            });
         }
+
+        patch.files.insert(path, PatchFile {
+            pre_hash: store_hash,
+            post_hash: wc_hash,
+            hunks: diff_hunks,
+        });
     }
 
     println!("{}", toml::to_string(&patch)?);
@@ -195,40 +188,37 @@ async fn apply(file: String) -> Result<()> {
         toml::from_str::<Patch>(&std::fs::read_to_string(file)?)?
     };
 
-    for patch_file in patch.files {
-        let mut actions = Vec::<Action>::new();
-        for section in patch_file.1 {
-            let line = section.0.parse::<usize>()?;
-            actions.push(section.1.to_action_at(line));
-        }
+    for mut patch_file in patch.files {
+        patch_file.1.hunks.sort_by(|a, b| a.old_range.0.cmp(&b.old_range.0));
 
-        let file_content = std::fs::read_to_string(&patch_file.0)?;
-        let mut file_content_iter = file_content.lines();
+        let mut line_idx = 0_usize;
         let mut file_new = Vec::<String>::new();
-        let mut line_index = 0_i32;
-        let mut actions_iter = actions.iter();
-        while let Some(act) = actions_iter.next() {
-            while line_index < act.at as i32 {
-                let x = file_content_iter.next().unwrap();
-                file_new.push(x.to_owned());
-                line_index += 1;
+        let file_old = std::fs::read_to_string(&patch_file.0)?;
+        let mut file_old_iter = file_old.lines();
+        'eof: for hunk in patch_file.1.hunks {
+            while line_idx < hunk.old_range.0 {
+                if let Some(v) = file_old_iter.next() {
+                    file_new.push(v.to_owned());
+                    line_idx += 1;
+                } else {
+                    break 'eof;
+                }
             }
-
-            file_new.append(&mut act.insert.clone());
-            for _ in 0..act.remove.len() {
-                file_content_iter.next();
+            // skip remove lines
+            for _ in 0..(hunk.old_range.1 - hunk.old_range.0) {
+                let _ = file_old_iter.next();
             }
-            line_index += act.remove.len() as i32;
+            // insert new lines
+            for add_line in hunk.diff.lines().filter(|x| x.starts_with('+')) {
+                file_new.push(add_line[1..].to_owned());
+            }
+            line_idx += 1;
         }
-        while let Some(v) = file_content_iter.next() {
-            file_new.push(v.to_owned());
-            line_index += 1;
-        }
-        if file_content.ends_with("\n") {
-            file_new.push("".to_owned());
+        while let Some(line) = file_old_iter.next() {
+            file_new.push(line.to_owned());
+            line_idx += 1;
         }
 
-        // println!("{}", file_new.join("\n"));
         std::fs::write(&patch_file.0, file_new.join("\n"))?;
     }
 
@@ -236,31 +226,38 @@ async fn apply(file: String) -> Result<()> {
 }
 
 async fn reverse(file: String) -> Result<()> {
-    let patch = toml::from_str::<Patch>(&std::fs::read_to_string(file)?)?;
+    let mut patch = if file == "-" {
+        toml::from_str::<Patch>(&{
+            let mut s = String::new();
+            std::io::stdin().read_to_string(&mut s)?;
+            s
+        })?
+    } else {
+        toml::from_str::<Patch>(&std::fs::read_to_string(file)?)?
+    };
 
-    let mut new_files = HashMap::<String, BTreeMap<String, PatchSection>>::new();
-    for file in patch.files {
-        let mut new_sections = BTreeMap::<String, PatchSection>::new();
-        for section in file.1 {
-            let mut s = section.1.clone();
-            let mut content_reverse = Vec::<String>::new();
-            let act = s.to_action_at(section.0.parse::<usize>()?);
-            for l in &act.insert {
-                content_reverse.push(format!("-{}", l));
+    for patch_file in &mut patch.files {
+        for hunk in patch_file.1.hunks.iter_mut() {
+            let mut diff = Vec::<String>::new();
+            for c in hunk.diff.lines() {
+                match c.chars().next() {
+                    | Some('+') => {
+                        diff.push(format!("-{}", &c[1..]));
+                    },
+                    | Some('-') => {
+                        diff.push(format!("+{}", &c[1..]));
+                    },
+                    | _ => {
+                        diff.push(c.to_owned());
+                    },
+                }
             }
-            for l in &act.remove {
-                content_reverse.push(format!("+{}", l));
-            }
-
-            s.content = content_reverse.join("\n");
-            new_sections.insert(act.at.to_string(), s);
+            hunk.diff = diff.join("\n");
+            std::mem::swap(&mut hunk.new_range, &mut hunk.old_range);
         }
-        new_files.insert(file.0, new_sections);
     }
 
-    let new_patch = Patch { files: new_files };
-    println!("{}", toml::to_string(&new_patch)?);
-
+    println!("{}", toml::to_string(&patch)?);
     Ok(())
 }
 
@@ -283,38 +280,19 @@ pub struct IndexEntry {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Patch {
-    pub files: HashMap<String, BTreeMap<String, PatchSection>>,
+    pub files: HashMap<String, PatchFile>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PatchSection {
-    // pub path: String,
-    // pub line: usize,
-    pub content: String,
+pub struct PatchFile {
+    pub pre_hash: String,
+    pub post_hash: String,
+    pub hunks: Vec<PatchFileHunk>,
 }
 
-impl PatchSection {
-    pub fn to_action_at(&self, line: usize) -> Action {
-        let mut remove_lines = Vec::<String>::new();
-        let mut insert_lines = Vec::<String>::new();
-        for l in self.content.lines() {
-            if l.starts_with("-") {
-                remove_lines.push(l[1..].to_string());
-            } else if l.starts_with("+") {
-                insert_lines.push(l[1..].to_string());
-            }
-        }
-
-        Action {
-            at: line,
-            remove: remove_lines,
-            insert: insert_lines,
-        }
-    }
-}
-
-pub struct Action {
-    at: usize,
-    remove: Vec<String>,
-    insert: Vec<String>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PatchFileHunk {
+    pub old_range: (usize, usize),
+    pub new_range: (usize, usize),
+    pub diff: String,
 }
