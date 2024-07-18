@@ -1,0 +1,6 @@
+ignore = [
+    "./.git",
+    "./.qop",
+    "./target",
+    "./test",
+]

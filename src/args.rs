@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use clap::Arg;
+use clap::{Arg, ArgAction};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Privilege {
@@ -40,6 +40,11 @@ pub enum ManualFormat {
 pub enum Command {
     Manual { path: String, format: ManualFormat },
     Autocomplete { path: String, shell: clap_complete::Shell },
+
+    Init,
+    Apply { file: String },
+    Reverse { file: String },
+    Diff { reverse: bool },
 }
 
 pub struct ClapArgumentLoader {}
@@ -81,6 +86,21 @@ impl ClapArgumentLoader {
                             .required(true),
                     ),
             )
+            .subcommand(clap::Command::new("init").about("init"))
+            .subcommand(
+                clap::Command::new("apply")
+                    .about("Apply patch.")
+                    .arg(clap::Arg::new("file").short('f').long("file").required(true)),
+            )
+            .subcommand(
+                clap::Command::new("reverse")
+                    .about("Reverse patch.")
+                    .arg(clap::Arg::new("file").short('f').long("file").required(true)),
+            )
+            .subcommand(
+                clap::Command::new("diff")
+                .about("diff")
+                .arg(clap::Arg::new("reverse").short('r').long("reverse").action(ArgAction::SetTrue)))
     }
 
     pub fn load() -> Result<CallArgs> {
@@ -105,6 +125,20 @@ impl ClapArgumentLoader {
             Command::Autocomplete {
                 path: subc.get_one::<String>("out").unwrap().into(),
                 shell: clap_complete::Shell::from_str(subc.get_one::<String>("shell").unwrap().as_str()).unwrap(),
+            }
+        } else if let Some(_) = command.subcommand_matches("init") {
+            Command::Init
+        } else if let Some(subc) = command.subcommand_matches("apply") {
+            Command::Apply {
+                file: subc.get_one::<String>("file").unwrap().into(),
+            }
+        } else if let Some(subc) = command.subcommand_matches("reverse") {
+            Command::Reverse {
+                file: subc.get_one::<String>("file").unwrap().into(),
+            }
+        } else if let Some(subc) = command.subcommand_matches("diff") {
+            Command::Diff {
+                reverse: subc.get_flag("reverse"),
             }
         } else {
             return Err(anyhow::anyhow!("unknown command"));

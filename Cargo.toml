@@ -28,6 +28,13 @@ bytes = "1.4.0"
 mime = "0.3.17"
 anyhow = "1.0.72"
 thiserror = "1.0.44"
+toml = "0.8.15"
+base64 = "0.22.1"
+chrono = { version = "0.4.38", features = ["serde"] }
+walkdir = "2.5.0"
+sha2 = "0.10.8"
+hex = "0.4.3"
+similar = { version = "2.5.0", features = ["inline"] }
 
 [dev-dependencies]
 rusty-hook = "0.11.2"
