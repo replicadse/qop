@@ -22,7 +22,7 @@
             "args": [
                 "apply",
                 "-f",
-                "./patch.rev.diff"
+                "./patch.diff"
             ],
             "cwd": "${workspaceFolder}"
         },

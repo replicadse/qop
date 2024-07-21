@@ -18,6 +18,8 @@ use chrono::{
 };
 use sha2::Digest;
 
+const STORE_PATH: &'static str = "./.qop/store";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cmd = crate::args::ClapArgumentLoader::load()?;
@@ -89,7 +91,7 @@ async fn write_index() -> Result<()> {
             }
 
             let rel_path = d.path();
-            let new_path = Path::new("./.qop/store").join(&rel_path);
+            let new_path = Path::new(STORE_PATH).join(&rel_path);
             if d.file_type()?.is_dir() {
                 std::fs::create_dir(&new_path)?;
                 files.extend(process_files(d.path(), ignore_stack)?);
@@ -104,8 +106,8 @@ async fn write_index() -> Result<()> {
         Ok(files)
     }
 
-    let _ = std::fs::remove_dir_all("./.qop/store");
-    std::fs::create_dir_all("./.qop/store")?;
+    let _ = std::fs::remove_dir_all(STORE_PATH);
+    std::fs::create_dir_all(STORE_PATH)?;
 
     let index = Index {
         latest: None,
@@ -121,7 +123,7 @@ async fn diff(reverse: bool) -> Result<()> {
     let index = toml::from_str::<Index>(&std::fs::read_to_string("./.qop/index.toml")?)?;
     let mut patch = Patch { files: HashMap::new() };
     for (path, store_hash) in index.files {
-        let store_path = Path::new("./.qop/store").join(&path);
+        let store_path = Path::new(STORE_PATH).join(&path);
         let wc_path = Path::new(&path);
 
         let wc_file_content = std::fs::read_to_string(&wc_path)?;
@@ -196,7 +198,7 @@ async fn apply(file: String) -> Result<()> {
         let file_old = std::fs::read_to_string(&patch_file.0)?;
         let mut file_old_iter = file_old.lines();
         'eof: for hunk in patch_file.1.hunks {
-            while line_idx < hunk.old_range.0 {
+            while line_idx < hunk.new_range.0 {
                 if let Some(v) = file_old_iter.next() {
                     file_new.push(v.to_owned());
                     line_idx += 1;
@@ -206,17 +208,17 @@ async fn apply(file: String) -> Result<()> {
             }
             // skip remove lines
             for _ in 0..(hunk.old_range.1 - hunk.old_range.0) {
-                let _ = file_old_iter.next();
+                let d = file_old_iter.next();
+                format!("{:?}", d);
             }
             // insert new lines
             for add_line in hunk.diff.lines().filter(|x| x.starts_with('+')) {
                 file_new.push(add_line[1..].to_owned());
             }
-            line_idx += 1;
+            line_idx = hunk.new_range.1;
         }
         while let Some(line) = file_old_iter.next() {
             file_new.push(line.to_owned());
-            line_idx += 1;
         }
 
         std::fs::write(&patch_file.0, file_new.join("\n"))?;
