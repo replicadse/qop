@@ -208,8 +208,7 @@ async fn apply(file: String) -> Result<()> {
             }
             // skip remove lines
             for _ in 0..(hunk.old_range.1 - hunk.old_range.0) {
-                let d = file_old_iter.next();
-                format!("{:?}", d);
+                let _ = file_old_iter.next();
             }
             // insert new lines
             for add_line in hunk.diff.lines().filter(|x| x.starts_with('+')) {
