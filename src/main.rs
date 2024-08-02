@@ -4,10 +4,12 @@ pub mod args;
 pub mod reference;
 
 use std::{
-    collections::HashMap, io::Read, path::{
+    collections::HashMap,
+    io::Read,
+    path::{
         Path,
         PathBuf,
-    }
+    },
 };
 
 use anyhow::Result;
@@ -63,7 +65,7 @@ async fn main() -> Result<()> {
         | crate::args::Command::Reverse { file } => {
             reverse(file).await?;
             Ok(())
-        }
+        },
     }
 }
 
@@ -145,7 +147,7 @@ async fn diff(reverse: bool) -> Result<()> {
             let ops = hunk.ops();
             let first_op = ops[0];
             let last_op = ops[ops.len() - 1];
-            
+
             let mut diff = Vec::<String>::new();
             for c in hunk.iter_changes() {
                 match c.tag() {
@@ -157,7 +159,7 @@ async fn diff(reverse: bool) -> Result<()> {
                     },
                     | similar::ChangeTag::Delete => {
                         diff.push(format!("-{}", c.value()));
-                    },   
+                    },
                 }
             }
 

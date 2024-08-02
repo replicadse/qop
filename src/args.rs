@@ -1,7 +1,10 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use clap::{Arg, ArgAction};
+use clap::{
+    Arg,
+    ArgAction,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Privilege {
@@ -96,13 +99,13 @@ impl ClapArgumentLoader {
             )
             .subcommand(
                 clap::Command::new("diff")
-                .about("diff")
-                .arg(clap::Arg::new("reverse").short('r').long("reverse").action(ArgAction::SetTrue))
+                    .about("diff")
+                    .arg(clap::Arg::new("reverse").short('r').long("reverse").action(ArgAction::SetTrue)),
             )
             .subcommand(
                 clap::Command::new("reverse")
-                .about("Reverse a diff.")
-                .arg(clap::Arg::new("file").short('f').long("file").required(true)),
+                    .about("Reverse a diff.")
+                    .arg(clap::Arg::new("file").short('f').long("file").required(true)),
             )
     }
 
