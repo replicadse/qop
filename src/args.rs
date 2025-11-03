@@ -3,6 +3,7 @@ use {
     clap::Arg,
     path_clean::PathClean,
     std::{path::PathBuf, str::FromStr},
+    clap::ArgAction,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -171,7 +172,7 @@ impl ClapArgumentLoader {
                                     .arg(clap::Arg::new("remote").short('r').long("remote").required(false).num_args(0))
                                     .arg(clap::Arg::new("dry").long("dry").required(false).num_args(0).help("Execute migration in a transaction but rollback instead of committing").conflicts_with("yes"))
                                     .arg(clap::Arg::new("yes").short('y').long("yes").required(false).num_args(0).help("Skip confirmation prompts"))
-                                    .arg(clap::Arg::new("locked").long("lock").num_args(0).help("Mark applied migration as locked (cannot be reverted without --unlock)"))
+                                    .arg(clap::Arg::new("unlock").long("unlock").num_args(0).action(ArgAction::SetTrue).help("Allow reverting locked migrations"))
                             )
                     );
                 subsystem = subsystem.subcommand(pg);
@@ -211,7 +212,7 @@ impl ClapArgumentLoader {
                         .arg(clap::Arg::new("diff").short('d').long("diff").required(false).num_args(0).help("Show migration diff before applying"))
                         .arg(clap::Arg::new("dry").long("dry").required(false).num_args(0).help("Execute migration in a transaction but rollback instead of committing").conflicts_with("yes"))
                         .arg(clap::Arg::new("yes").short('y').long("yes").required(false).num_args(0).help("Skip confirmation prompts"))
-                        .arg(clap::Arg::new("unlock").long("unlock").num_args(0).help("Allow reverting locked migrations"))
+                        .arg(clap::Arg::new("unlock").long("unlock").num_args(0).action(ArgAction::SetTrue).help("Allow reverting locked migrations"))
                     )
                     .subcommand(clap::Command::new("list").about("Lists all applied migrations.")
                         .arg(clap::Arg::new("output").short('o').long("output").required(false).value_parser(["human", "json"]).help("Output format"))
