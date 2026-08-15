@@ -17,7 +17,7 @@ The CLI offers tools to either accept and proceed with caution (after operator c
 ## Decision
 
 Provide two explicit history management operations:
-- `history sync`: Upsert remote migrations to local filesystem by writing `up.sql` and `down.sql` files for all known remote entries.
+- `history sync`: Upsert remote migrations to local filesystem by writing backend-specific up/down files for all known remote entries.
 - `history fix`: Rename local out-of-order migrations to preserve a linear chain relative to the latest applied remote ID.
 
 ## Consequences
@@ -35,7 +35,7 @@ Provide two explicit history management operations:
 
 - Detection of non-linear state uses a simple lexicographic comparison of string timestamps against the max applied ID.
 - `history fix` increments from max(remote_ts, now) and renames local `id=<old>` to an increasing sequence `id=<new>`.
-- `history sync` writes `up.sql` and `down.sql` from remote tables to local directories, creating directories as needed.
+- `history sync` writes backend-specific up/down files from remote tables to local directories, creating directories as needed.
 
 ### User Interaction
 - Normal `up`/`down` flows MUST warn when a non-linear sequence is detected and ask for confirmation.

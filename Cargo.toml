@@ -3,7 +3,7 @@ name = "qop"
 version = "0.0.0"
 authors = ["cchexcode <alexanderh.weber@outlook.com>"]
 edition = "2024"
-license = "MIT"
+license-file = "LICENSE"
 description = "A simple and powerful database migration tool."
 homepage = "https://github.com/cchexcode/qop"
 repository = "https://github.com/cchexcode/qop"
@@ -13,8 +13,9 @@ readme = "docs/README.md"
 
 [features]
 default = ["sub+sqlite"]
-"sub+postgres" = ["sqlx/postgres"]
-"sub+sqlite" = ["sqlx/sqlite"]
+"sub+postgres" = ["dep:sqlx", "sqlx/postgres"]
+"sub+sqlite" = ["dep:sqlx", "sqlx/sqlite"]
+"sub+surrealdb" = ["dep:reqwest"]
 
 [dependencies]
 tokio = { version = "1.47.1", features = [
@@ -36,9 +37,10 @@ serde_json = "1.0.143"
 anyhow = "1.0.99"
 chrono = { version = "0.4.41", features = ["serde"] }
 toml = "0.9.5"
-sqlx = { version = "0.8.6", default-features = false, features = ["tls-rustls", "runtime-tokio", "chrono"]}
+sqlx = { version = "0.8.6", default-features = false, features = ["tls-rustls", "runtime-tokio", "chrono"], optional = true }
 comfy-table = "7.2.0"
 path-clean = "1.0.1"
 semver = { version = "1.0", features = ["serde"] }
 uuid = { version = "1.18", features = ["v7", "serde"] }
 whoami = "1.6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }

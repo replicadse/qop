@@ -10,13 +10,13 @@ Accepted
 
 ## Context
 
-The `qop` migration tool supports multiple database backends (PostgreSQL and SQLite), but users typically only need one or two backends in their applications. Including all backends by default would increase binary size and introduce unnecessary dependencies. Additionally, some environments may have restrictions on which database drivers can be included.
+The `qop` migration tool supports multiple database backends (PostgreSQL, SQLite, and SurrealDB), but users typically only need one or two backends in their applications. Including all backends by default would increase binary size and introduce unnecessary dependencies. Additionally, some environments may have restrictions on which database drivers can be included.
 
 Rust's feature system allows conditional compilation based on feature flags, enabling users to include only the database backends they need while maintaining a clean, modular codebase.
 
 ## Decision
 
-All subsystem-specific code MUST be conditionally compiled using Cargo feature flags with the pattern `sub+<backend>` (e.g., `sub+postgres`, `sub+sqlite`).
+All subsystem-specific code MUST be conditionally compiled using Cargo feature flags with the pattern `sub+<backend>` (e.g., `sub+postgres`, `sub+sqlite`, `sub+surrealdb`).
 
 ### Implementation Requirements
 
@@ -29,9 +29,10 @@ All subsystem-specific code MUST be conditionally compiled using Cargo feature f
 
 ```toml
 [features]
-default = ["sub+sqlite", "sub+postgres"]
-"sub+postgres" = ["sqlx/postgres"]
-"sub+sqlite" = ["sqlx/sqlite"]
+default = ["sub+sqlite"]
+"sub+postgres" = ["dep:sqlx", "sqlx/postgres"]
+"sub+sqlite" = ["dep:sqlx", "sqlx/sqlite"]
+"sub+surrealdb" = ["dep:reqwest"]
 ```
 
 ### Code Patterns
@@ -40,8 +41,10 @@ default = ["sub+sqlite", "sub+postgres"]
    ```rust
    #[cfg(feature = "sub+postgres")]
    pub mod postgres;
-   #[cfg(feature = "sub+sqlite")]
-   pub mod sqlite;
+    #[cfg(feature = "sub+sqlite")]
+    pub mod sqlite;
+    #[cfg(feature = "sub+surrealdb")]
+    pub mod surrealdb;
    ```
 
 2. **Enum variant conditional compilation**:
@@ -51,12 +54,14 @@ default = ["sub+sqlite", "sub+postgres"]
        Postgres(PostgresConfig),
        #[cfg(feature = "sub+sqlite")]
        Sqlite(SqliteConfig),
+       #[cfg(feature = "sub+surrealdb")]
+       Surrealdb(SurrealdbConfig),
    }
    ```
 
 3. **Compile-time validation**:
    ```rust
-   #[cfg(not(any(feature = "sub+postgres", feature = "sub+sqlite")))]
+   #[cfg(not(any(feature = "sub+postgres", feature = "sub+sqlite", feature = "sub+surrealdb")))]
    compile_error!("At least one subsystem feature must be enabled");
    ```
 
@@ -96,6 +101,9 @@ cargo build --features "sub+sqlite"
 
 # Both backends
 cargo build --features "sub+postgres,sub+sqlite"
+
+# SurrealDB only
+cargo build --no-default-features --features "sub+surrealdb"
 
 # Invalid - fails at compile time
 cargo build --no-default-features

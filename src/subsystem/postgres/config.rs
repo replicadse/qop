@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::config::DataSource;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

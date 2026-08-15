@@ -4,9 +4,9 @@ use {
     crate::subsystem::sqlite::migration,
     anyhow::Result,
     chrono::NaiveDateTime,
-    sqlx::{Pool, Sqlite},
-    sqlx::sqlite::SqliteRow,
     sqlx::Row,
+    sqlx::sqlite::SqliteRow,
+    sqlx::{Pool, Sqlite},
     std::collections::HashSet,
 };
 
@@ -17,9 +17,17 @@ pub struct SqliteRepo {
 }
 
 impl SqliteRepo {
-    pub async fn from_config(path: &std::path::Path, config: crate::subsystem::sqlite::config::SubsystemSqlite, check_cli_version: bool) -> Result<Self> {
+    pub async fn from_config(
+        path: &std::path::Path,
+        config: crate::subsystem::sqlite::config::SubsystemSqlite,
+        check_cli_version: bool,
+    ) -> Result<Self> {
         let pool = sq::build_pool_from_config(path, &config, check_cli_version).await?;
-        Ok(Self { config, pool, path: path.to_path_buf() })
+        Ok(Self {
+            config,
+            pool,
+            path: path.to_path_buf(),
+        })
     }
 }
 
@@ -32,7 +40,7 @@ impl MigrationRepository for SqliteRepo {
             let mut query = sq::build_table_query("CREATE TABLE IF NOT EXISTS ", &self.config.tables.migrations);
             query.push(" (id TEXT PRIMARY KEY, version TEXT NOT NULL, up TEXT NOT NULL, down TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, pre TEXT, comment TEXT, locked BOOLEAN NOT NULL DEFAULT 0)");
             query.build().execute(&mut *tx).await?;
-            
+
             // Create log table
             let mut log_query = sq::build_table_query("CREATE TABLE IF NOT EXISTS ", &self.config.tables.log);
             log_query.push(" (id TEXT PRIMARY KEY, migration_id TEXT NOT NULL, operation TEXT NOT NULL, sql_command TEXT NOT NULL, executed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)");
@@ -57,39 +65,77 @@ impl MigrationRepository for SqliteRepo {
         Ok(id)
     }
 
-    async fn apply_migration(&self, id: &str, up_sql: &str, down_sql: &str, comment: Option<&str>, pre: Option<&str>, timeout: Option<u64>, dry_run: bool, locked: bool) -> Result<()> {
+    async fn apply_migration(
+        &self,
+        id: &str,
+        up_sql: &str,
+        down_sql: &str,
+        comment: Option<&str>,
+        pre: Option<&str>,
+        timeout: Option<u64>,
+        dry_run: bool,
+        locked: bool,
+    ) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         sq::set_timeout_if_needed(&mut *tx, timeout).await?;
-        
+
         // Execute migration
         sq::execute_sql_statements(&mut tx, up_sql, id).await?;
-        sq::insert_migration_record(&mut *tx, &self.config.tables.migrations, id, up_sql, down_sql, comment, pre, locked).await?;
-        
+        sq::insert_migration_record(
+            &mut *tx,
+            &self.config.tables.migrations,
+            id,
+            up_sql,
+            down_sql,
+            comment,
+            pre,
+            locked,
+        )
+        .await?;
+
         // Log successful migration
         sq::insert_log_entry(&mut *tx, &self.config.tables.log, id, "up", up_sql).await?;
-        
-        if dry_run { tx.rollback().await?; } else { tx.commit().await?; }
+
+        if dry_run {
+            tx.rollback().await?;
+        } else {
+            tx.commit().await?;
+        }
         Ok(())
     }
 
-    async fn revert_migration(&self, id: &str, down_sql: &str, timeout: Option<u64>, dry_run: bool, unlock: bool) -> Result<()> {
+    async fn revert_migration(
+        &self,
+        id: &str,
+        down_sql: &str,
+        timeout: Option<u64>,
+        dry_run: bool,
+        unlock: bool,
+    ) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         sq::set_timeout_if_needed(&mut *tx, timeout).await?;
-        
+
         // Check if migration is locked
         let is_locked = sq::is_migration_locked(&mut *tx, &self.config.tables.migrations, id).await?;
         if is_locked && !unlock {
-            anyhow::bail!("Migration {} is locked and cannot be reverted without --unlock flag", id);
+            anyhow::bail!(
+                "Migration {} is locked and cannot be reverted without --unlock flag",
+                id
+            );
         }
-        
+
         // Execute revert migration
         sq::execute_sql_statements(&mut tx, down_sql, id).await?;
         sq::delete_migration_record(&mut *tx, &self.config.tables.migrations, id).await?;
-        
+
         // Log successful revert
         sq::insert_log_entry(&mut *tx, &self.config.tables.log, id, "down", down_sql).await?;
-        
-        if dry_run { tx.rollback().await?; } else { tx.commit().await?; }
+
+        if dry_run {
+            tx.rollback().await?;
+        } else {
+            tx.commit().await?;
+        }
         Ok(())
     }
 
@@ -97,14 +143,18 @@ impl MigrationRepository for SqliteRepo {
         let mut tx = self.pool.begin().await?;
         let map = sq::get_migration_history(&mut tx, &self.config.tables.migrations).await?;
         tx.commit().await?;
-        let mut v: Vec<(String, NaiveDateTime, Option<String>, bool)> = map.into_iter().map(|(id, (ts, comment, locked))| (id, ts, comment, locked)).collect();
+        let mut v: Vec<(String, NaiveDateTime, Option<String>, bool)> = map
+            .into_iter()
+            .map(|(id, (ts, comment, locked))| (id, ts, comment, locked))
+            .collect();
         v.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(v)
     }
 
     async fn fetch_recent_for_revert_remote(&self) -> Result<Vec<(String, String)>> {
         let mut tx = self.pool.begin().await?;
-        let rows: Vec<SqliteRow> = sq::get_recent_migrations_for_revert(&mut tx, &self.config.tables.migrations).await?;
+        let rows: Vec<SqliteRow> =
+            sq::get_recent_migrations_for_revert(&mut tx, &self.config.tables.migrations).await?;
         tx.commit().await?;
         Ok(rows.into_iter().map(|row| (row.get("id"), row.get("down"))).collect())
     }
@@ -127,8 +177,13 @@ impl MigrationRepository for SqliteRepo {
         q.push(" ORDER BY id ASC");
         let rows = q.build().fetch_all(&mut *tx).await?;
         tx.commit().await?;
-        Ok(rows.into_iter().map(|row| (row.get("id"), row.get("up"), row.get("down"), row.get("comment"))).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.get("id"), row.get("up"), row.get("down"), row.get("comment")))
+            .collect())
     }
 
-    fn get_path(&self) -> &std::path::Path { &self.path }
+    fn get_path(&self) -> &std::path::Path {
+        &self.path
+    }
 }

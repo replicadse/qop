@@ -10,7 +10,7 @@ Accepted
 
 ## Context
 
-The `qop` migration tool needs to support multiple database backends (PostgreSQL, SQLite) with potentially more backends added in the future. Each database has unique connection patterns, SQL dialects, and operational characteristics, but the core migration logic (applying migrations, tracking history, etc.) should remain consistent across all backends.
+The `qop` migration tool needs to support multiple database backends (PostgreSQL, SQLite, SurrealDB) with potentially more backends added in the future. Each database has unique connection patterns, query dialects, and operational characteristics, but the core migration logic (applying migrations, tracking history, etc.) should remain consistent across all backends.
 
 A pluggable architecture is needed that allows for:
 1. Adding new database backends without modifying core logic
@@ -26,7 +26,7 @@ The codebase MUST implement a pluggable subsystem architecture where each databa
 
 1. **Core Layer**: Database-agnostic business logic (`core::service`, `core::migration`)
 2. **Repository Layer**: Database-specific implementations behind a common trait (`core::repo::MigrationRepository`)
-3. **Subsystem Layer**: Complete backend implementations (`subsystem::postgres`, `subsystem::sqlite`)
+3. **Subsystem Layer**: Complete backend implementations (`subsystem::postgres`, `subsystem::sqlite`, `subsystem::surrealdb`)
 4. **Driver Layer**: Subsystem dispatch and coordination (`subsystem::driver`)
 
 ### Implementation Requirements

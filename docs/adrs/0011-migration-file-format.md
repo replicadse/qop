@@ -14,10 +14,10 @@ Migrations are stored on disk and synchronized with the database migration store
 
 ## Decision
 
-A migration MUST be a directory named with the pattern `id=<timestamp>` containing the following files:
-- `up.sql` – SQL to apply the migration
-- `down.sql` – SQL to revert the migration
-- `meta.toml` – optional metadata associated with the migration
+A migration MUST be a directory named with the pattern `id=<timestamp>` containing backend-specific up/down migration files and metadata:
+- SQL subsystems use `up.sql` and `down.sql`.
+- SurrealDB uses `up.surql` and `down.surql` because migrations are SurrealQL, not SQL.
+- `meta.toml` stores optional metadata associated with the migration.
 
 ### Semantics
 - The `id` MUST be a millisecond UNIX timestamp in string form. The code normalizes references by stripping an optional `id=` prefix.
@@ -53,16 +53,19 @@ Behavioral rules:
 
 ### Negative
 - Timestamp-based IDs can collide in rare cases (mitigated by millisecond precision)
-- Requires discipline to keep `down.sql` valid and in sync
+- Requires discipline to keep down migrations valid and in sync
 
 ## Implementation
 
 - Directory scanning MUST only accept folders starting with `id=` and then normalize IDs by removing the prefix.
 - Helper functions MUST provide IO with clear error contexts:
   - read_migration_files(id)
+  - read_migration_files_with_extension(id, extension)
   - read_migration_meta(id)
   - read_migration_with_meta(id)
+  - read_migration_with_meta_with_extension(id, extension)
   - create_migration_directory(path, comment, locked)
+  - create_migration_directory_with_extension(path, comment, locked, extension)
 - Default metadata SHOULD include `whoami::username()` and current UTC timestamp.
 
 ## References

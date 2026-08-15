@@ -1,11 +1,11 @@
 # qop - A simple database migration tool
 
-`qop` is a command-line tool for managing database migrations for PostgreSQL and SQLite. It's designed to be simple, straightforward, and easy to use. The software respects semantic versioning and will only introduce breaking changes in new `major` versions once passing the `1.0.0` version. While being in-development, breaking changes CAN occur in new `minor` versions.
+`qop` is a command-line tool for managing database migrations for PostgreSQL, SQLite, and feature-gated SurrealDB. It's designed to be simple, straightforward, and easy to use. The software respects semantic versioning and will only introduce breaking changes in new `major` versions once passing the `1.0.0` version. While being in-development, breaking changes CAN occur in new `minor` versions.
 
 ## Features
 
-*   Backend-agnostic design (supports PostgreSQL and SQLite)
-*   Simple migration file format (`up.sql`, `down.sql`, `meta.toml`)
+*   Backend-agnostic design (supports PostgreSQL, SQLite, and SurrealDB)
+*   Simple migration file format (`up.sql`, `down.sql`, `meta.toml`; SurrealDB uses `up.surql`, `down.surql`)
 *   Migration metadata support (comments, locking status)
 *   Migration locking system to prevent accidental reverts
 *   Timestamp-based migration IDs
@@ -31,7 +31,7 @@ Please find more information about migration from one version to another in the 
 
 - Default features
   - Enabled: `sub+sqlite`
-  - Disabled: `sub+postgres` (optional)
+  - Disabled: `sub+postgres`, `sub+surrealdb` (optional)
 
 - Enable PostgreSQL (keeping default SQLite):
 
@@ -43,6 +43,18 @@ cargo build --features "sub+postgres"
 
 ```bash
 cargo build --no-default-features --features "sub+postgres"
+```
+
+- Enable SurrealDB (keeping default SQLite):
+
+```bash
+cargo build --features "sub+surrealdb"
+```
+
+- SurrealDB only (no SQLite):
+
+```bash
+cargo build --no-default-features --features "sub+surrealdb"
 ```
 
 - SQLite only (default):
@@ -58,7 +70,8 @@ cargo build --no-default-features   # Fails at compile time with a clear error
 ```
 
 Notes:
-- Enabling a subsystem feature also enables only the matching `sqlx` backend internally, keeping binaries small.
+- Enabling a SQL subsystem feature also enables only the matching `sqlx` backend internally, keeping binaries small.
+- SurrealDB support is HTTP-backed, enabled only by `sub+surrealdb`, and uses `reqwest` internally.
 - Runtime uses Tokio and Rustls TLS by default. No `sqlx` macros are required.
 
 ## Getting Started
@@ -74,29 +87,36 @@ Notes:
         ```bash
         qop subsystem sqlite config init -p migrations/qop.toml -d ./app.db
         ```
+      - SurrealDB:
+        ```bash
+        qop subsystem surrealdb config init -p migrations/qop.toml -e http://127.0.0.1:8000 -n test -d test --user root --password root
+        ```
 
 2.  **Initialize the migration table:**
     ```bash
     qop subsystem postgres init -p migrations/qop.toml
     qop subsystem sqlite   init -p migrations/qop.toml
+    qop subsystem surrealdb init -p migrations/qop.toml
     ```
 
 3.  **Create your first migration:**
     ```bash
     qop subsystem postgres new -p migrations/qop.toml    # For PostgreSQL
     qop subsystem sqlite   new -p migrations/qop.toml    # For SQLite
+    qop subsystem surrealdb new -p migrations/qop.toml   # For SurrealDB
     ```
-    This will create a new directory with `up.sql` and `down.sql` files.
+    This will create a new directory with backend-specific migration files. SQL backends use `up.sql` and `down.sql`; SurrealDB uses `up.surql` and `down.surql`.
 
 4.  **Apply the migration:**
     ```bash
     qop subsystem postgres up -p migrations/qop.toml     # For PostgreSQL
     qop subsystem sqlite   up -p migrations/qop.toml     # For SQLite
+    qop subsystem surrealdb up -p migrations/qop.toml    # For SurrealDB
     ```
 
 ## Configuration
 
-`qop` is configured using a `qop.toml` file. Here are examples for both supported backends:
+`qop` is configured using a `qop.toml` file. Here are examples for supported backends:
 
 ### PostgreSQL Configuration
 
@@ -144,7 +164,45 @@ table_prefix = "__qop"
 timeout = 30
 ```
 
-The migration files live in the same directory as the `qop.toml` file (e.g., `migrations/`). Each migration is a folder named `id=<timestamp>/` containing `up.sql`, `down.sql`, and `meta.toml`.
+### SurrealDB Configuration
+
+SurrealDB support is optional. Build with `sub+surrealdb`, then configure the HTTP endpoint, namespace, and database:
+
+```toml
+version = ">=0.1.0"
+
+[subsystem.surrealdb]
+connection = { static = "http://127.0.0.1:8000" }
+namespace = "test"
+database = "test"
+username = { static = "root" }
+password = { static = "root" }
+timeout = 30
+
+[subsystem.surrealdb.tables]
+migrations = "__qop_migrations"
+log = "__qop_log"
+```
+
+You can also load the endpoint and credentials from environment variables:
+
+```toml
+version = ">=0.1.0"
+
+[subsystem.surrealdb]
+connection = { from_env = "SURREALDB_URL" }
+namespace = "test"
+database = "test"
+username = { from_env = "SURREALDB_USER" }
+password = { from_env = "SURREALDB_PASSWORD" }
+timeout = 30
+
+[subsystem.surrealdb.tables]
+migrations = "__qop_migrations"
+log = "__qop_log"
+```
+
+The migration files live in the same directory as the `qop.toml` file (e.g., `migrations/`). Each migration is a folder named `id=<timestamp>/` containing backend-specific up/down files plus `meta.toml`. SQL backends use `up.sql` and `down.sql`; SurrealDB uses `up.surql` and `down.surql`.
 
 ## Usage
 
@@ -425,6 +483,18 @@ qop subsystem sqlite apply down <ID> --path path/to/your/qop.toml
 *   `--unlock`: Allow reverting locked migrations
 *   `-y, --yes`: Skip confirmation prompts and revert migration automatically
 
+#### SurrealDB Commands
+
+SurrealDB operations are available when built with `sub+surrealdb` and are accessed through the `surrealdb` (alias: `surreal`) subsystem. The command set matches the other subsystems: `config init`, `init`, `new`, `up`, `down`, `list`, `history sync`, `history fix`, `diff`, `apply up`, and `apply down`.
+
+SurrealDB migrations are SurrealQL files named `up.surql` and `down.surql`, not SQL files.
+
+```bash
+qop subsystem surrealdb config init -p migrations/qop.toml -e http://127.0.0.1:8000 -n test -d test --user root --password root
+qop subsystem surrealdb init -p migrations/qop.toml
+qop subsystem surrealdb up -p migrations/qop.toml --yes
+```
+
 ### `man`
 
 Renders the manual.
@@ -455,27 +525,28 @@ qop autocomplete --out completions --shell zsh
 
 ## Migration Preview and Safety Features
 
-### Preview SQL during confirmation
+### Preview migrations during confirmation
 
-During confirmation prompts, type `d` or `diff` to preview the exact SQL for the operation:
+During confirmation prompts, type `d` or `diff` to preview the exact migration content for the operation:
 
 ```bash
-# Apply pending migrations (press 'd' at the prompt to preview SQL)
+# Apply pending migrations (press 'd' at the prompt to preview content)
 qop subsystem postgres up -p migrations/qop.toml
 
-# Revert last migration (press 'd' at the prompt to preview SQL)
+# Revert last migration (press 'd' at the prompt to preview content)
 qop subsystem postgres down -p migrations/qop.toml
 ```
 
-The preview shows the raw SQL content exactly as it will be executed, with no additional formatting.
+The preview shows the raw migration content exactly as it will be executed, with no additional formatting.
 
 ### Diff command
 
-You can also print pending SQL without prompts using the diff command:
+You can also print pending migration content without prompts using the diff command:
 
 ```bash
 qop subsystem postgres diff -p migrations/qop.toml
 qop subsystem sqlite   diff -p migrations/qop.toml
+qop subsystem surrealdb diff -p migrations/qop.toml
 ```
 
 **Example Output:**
@@ -489,7 +560,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 ```
 
-The output contains only the SQL statements from your migration files, making it easy to redirect to files or pipe to other tools.
+The output contains only the statements from your migration files, making it easy to redirect to files or pipe to other tools.
 
 ### Automated mode
 

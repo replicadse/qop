@@ -3,11 +3,7 @@ use {
     anyhow::Result,
     clap_complete::Shell,
     clap_mangen::Man,
-    std::{
-        fs::File,
-        io::Write,
-        path::Path,
-    },
+    std::{fs::File, io::Write, path::Path},
 };
 
 fn collect_commands() -> Vec<(String, clap::Command)> {

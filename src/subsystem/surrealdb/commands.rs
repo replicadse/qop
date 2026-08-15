@@ -24,7 +24,13 @@ pub enum HistoryCommand {
 
 #[derive(Debug)]
 pub enum ConfigCommand {
-    Init { path: String },
+    Init {
+        connection: String,
+        namespace: String,
+        database: String,
+        username: Option<String>,
+        password: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -1,18 +1,18 @@
 use {
-    crate::config::{DataSource, WithVersion, Config},
+    crate::config::{Config, DataSource, WithVersion},
     crate::subsystem::sqlite::config::SubsystemSqlite,
     anyhow::{Context, Result},
     chrono::{NaiveDateTime, Utc},
-    sqlx::{sqlite::SqliteRow, Pool, Sqlite, QueryBuilder, Row},
     sqlx::sqlite::SqlitePoolOptions,
+    sqlx::{Pool, QueryBuilder, Row, Sqlite, sqlite::SqliteRow},
     std::{
         collections::{HashMap, HashSet},
         path::Path,
     },
 };
 
-use std::io::{self, Write};
 use crate::core::migration::create_migration_directory;
+use std::io::{self, Write};
 
 // Database utility functions
 pub(crate) fn get_effective_timeout(config: &SubsystemSqlite, provided_timeout: Option<u64>) -> Option<u64> {
@@ -23,7 +23,9 @@ pub(crate) fn quote_ident(ident: &str) -> String {
     let mut s = String::with_capacity(ident.len() + 2);
     s.push('"');
     for ch in ident.chars() {
-        if ch == '"' { s.push('"'); }
+        if ch == '"' {
+            s.push('"');
+        }
         s.push(ch);
     }
     s.push('"');
@@ -58,14 +60,12 @@ fn display_sql_migration(migration_id: &str, sql: &str, direction: &str) {
 
 fn create_bulk_migrations_diff_fn<'a>(
     migrations: &'a [String],
-    migration_dir: &'a Path
+    migration_dir: &'a Path,
 ) -> impl Fn() -> Result<()> + 'a {
     move || -> Result<()> {
         for migration_id in migrations {
-            let (up_sql, _down_sql) = crate::core::migration::read_migration_files(
-                migration_dir, migration_id
-            )?;
-            
+            let (up_sql, _down_sql) = crate::core::migration::read_migration_files(migration_dir, migration_id)?;
+
             display_sql_migration(migration_id, &up_sql, "UP");
         }
         Ok(())
@@ -75,7 +75,7 @@ fn create_bulk_migrations_diff_fn<'a>(
 fn create_bulk_reverts_diff_fn<'a>(
     migrations: &'a [SqliteRow],
     migration_dir: &'a Path,
-    remote: bool
+    remote: bool,
 ) -> impl Fn() -> Result<()> + 'a {
     move || -> Result<()> {
         for row in migrations {
@@ -83,12 +83,10 @@ fn create_bulk_reverts_diff_fn<'a>(
             let down_sql: String = if remote {
                 row.get("down")
             } else {
-                let (_up_sql, down_sql) = crate::core::migration::read_migration_files(
-                    migration_dir, &id
-                )?;
+                let (_up_sql, down_sql) = crate::core::migration::read_migration_files(migration_dir, &id)?;
                 down_sql
             };
-            
+
             display_sql_migration(&id, &down_sql, "DOWN");
         }
         Ok(())
@@ -98,7 +96,7 @@ fn create_bulk_reverts_diff_fn<'a>(
 fn create_single_migration_diff_fn<'a>(
     migration_id: &'a str,
     sql: &'a str,
-    direction: &'a str
+    direction: &'a str,
 ) -> impl Fn() -> Result<()> + 'a {
     move || -> Result<()> {
         display_sql_migration(migration_id, sql, direction);
@@ -112,7 +110,8 @@ pub(crate) async fn get_applied_migrations(
 ) -> Result<HashSet<String>> {
     let mut query = build_table_query("SELECT id FROM ", table);
     query.push(" ORDER BY id ASC");
-    Ok(query.build()
+    Ok(query
+        .build()
         .fetch_all(&mut **tx)
         .await?
         .into_iter()
@@ -126,10 +125,7 @@ pub(crate) async fn get_last_migration_id(
 ) -> Result<Option<String>> {
     let mut query = build_table_query("SELECT id FROM ", table);
     query.push(" ORDER BY id DESC LIMIT 1");
-    Ok(query.build()
-        .fetch_optional(&mut **tx)
-        .await?
-        .map(|row| row.get("id")))
+    Ok(query.build().fetch_optional(&mut **tx).await?.map(|row| row.get("id")))
 }
 
 pub(crate) async fn insert_migration_record<'e, E>(
@@ -147,7 +143,8 @@ where
 {
     let mut query = build_table_query("INSERT INTO ", table);
     query.push(" (id, version, up, down, comment, pre, locked) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    query.build()
+    query
+        .build()
         .bind(id)
         .bind(env!("CARGO_PKG_VERSION"))
         .bind(up_sql)
@@ -160,11 +157,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn delete_migration_record<'e, E>(
-    executor: E,
-    table: &str,
-    id: &str,
-) -> Result<()>
+pub(crate) async fn delete_migration_record<'e, E>(executor: E, table: &str, id: &str) -> Result<()>
 where
     E: sqlx::Executor<'e, Database = Sqlite>,
 {
@@ -174,17 +167,14 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_migration_locked<'e, E>(
-    executor: E,
-    table: &str,
-    id: &str,
-) -> Result<bool>
+pub(crate) async fn is_migration_locked<'e, E>(executor: E, table: &str, id: &str) -> Result<bool>
 where
     E: sqlx::Executor<'e, Database = Sqlite>,
 {
     let mut query = build_table_query("SELECT locked FROM ", table);
     query.push(" WHERE id = ?");
-    let locked: Option<bool> = query.build()
+    let locked: Option<bool> = query
+        .build()
         .bind(id)
         .fetch_optional(executor)
         .await?
@@ -198,14 +188,19 @@ pub(crate) async fn get_migration_history(
 ) -> Result<HashMap<String, (NaiveDateTime, Option<String>, bool)>> {
     let mut query = build_table_query("SELECT id, created_at, comment, locked FROM ", table);
     query.push(" ORDER BY id ASC");
-    Ok(query.build()
+    Ok(query
+        .build()
         .fetch_all(&mut **tx)
         .await?
         .into_iter()
-        .map(|row| (row.get("id"), (row.get("created_at"), row.get("comment"), row.get("locked"))))
+        .map(|row| {
+            (
+                row.get("id"),
+                (row.get("created_at"), row.get("comment"), row.get("locked")),
+            )
+        })
         .collect())
 }
-
 
 pub(crate) async fn get_recent_migrations_for_revert(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
@@ -236,20 +231,16 @@ pub(crate) async fn get_migration_down_sql(
     Ok(row.get("down"))
 }
 
-
-pub(crate) async fn get_table_version(
-    tx: &mut sqlx::Transaction<'_, Sqlite>,
-    table: &str,
-) -> Result<Option<String>> {
+pub(crate) async fn get_table_version(tx: &mut sqlx::Transaction<'_, Sqlite>, table: &str) -> Result<Option<String>> {
     let mut query = QueryBuilder::new("SELECT version FROM ");
     query.push(table);
     query.push(" ORDER BY id DESC LIMIT 1");
-    Ok(query.build()
+    Ok(query
+        .build()
         .fetch_optional(&mut **tx)
         .await?
         .map(|row| row.get("version")))
 }
-
 
 pub(crate) async fn execute_sql_statements(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
@@ -257,32 +248,34 @@ pub(crate) async fn execute_sql_statements(
     migration_id: &str,
 ) -> Result<()> {
     match sqlx::raw_sql(sql).execute(&mut **tx).await {
-        Ok(_) => {
+        | Ok(_) => {
             // Statement executed successfully
-        }
-        Err(e) => {
+        },
+        | Err(e) => {
             return Err(anyhow::anyhow!(
                 "Failed to execute statements in migration {}: {}",
                 migration_id,
                 e,
             ));
-        }
+        },
     }
     Ok(())
 }
 
-pub(crate) async fn build_pool_from_config(path: &Path, sqlite_config: &SubsystemSqlite, check_cli_version: bool) -> Result<Pool<Sqlite>> {
+pub(crate) async fn build_pool_from_config(
+    path: &Path,
+    sqlite_config: &SubsystemSqlite,
+    check_cli_version: bool,
+) -> Result<Pool<Sqlite>> {
     let uri = match &sqlite_config.connection {
         | DataSource::Static(connection) => connection.to_owned(),
-        | DataSource::FromEnv(var) => {
-            std::env::var(var).with_context(|| {
-                format!(
-                    "Missing environment variable '{}' referenced by [subsystem.sqlite].connection in {}",
-                    var,
-                    path.display()
-                )
-            })?
-        },
+        | DataSource::FromEnv(var) => std::env::var(var).with_context(|| {
+            format!(
+                "Missing environment variable '{}' referenced by [subsystem.sqlite].connection in {}",
+                var,
+                path.display()
+            )
+        })?,
     };
 
     let pool = SqlitePoolOptions::new().max_connections(1).connect(&uri).await?;
@@ -299,7 +292,9 @@ pub(crate) async fn build_pool_from_config(path: &Path, sqlite_config: &Subsyste
                 if !(cli_version.major == 0 && cli_version.minor == 0 && cli_version.patch == 0) {
                     let last_migration_version = semver::Version::parse(&version)?;
                     if last_migration_version > cli_version {
-                        anyhow::bail!("Latest migration table version is older than the CLI version. Please run 'qop subsystem sqlite history fix' to rename out-of-order migrations.");
+                        anyhow::bail!(
+                            "Latest migration table version is older than the CLI version. Please run 'qop subsystem sqlite history fix' to rename out-of-order migrations."
+                        );
                     }
                 }
             }
@@ -346,7 +341,7 @@ pub async fn init_with_pool(migrations_table: &str, log_table: &str, pool: &Pool
         let mut query = build_table_query("CREATE TABLE IF NOT EXISTS ", migrations_table);
         query.push(" (id TEXT PRIMARY KEY, version TEXT NOT NULL, up TEXT NOT NULL, down TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, pre TEXT, comment TEXT, locked BOOLEAN NOT NULL DEFAULT 0)");
         query.build().execute(&mut *tx).await?;
-        
+
         // Create log table
         let mut log_query = build_table_query("CREATE TABLE IF NOT EXISTS ", log_table);
         log_query.push(" (id TEXT PRIMARY KEY, migration_id TEXT NOT NULL, operation TEXT NOT NULL, sql_command TEXT NOT NULL, executed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)");
@@ -363,15 +358,27 @@ pub async fn new_migration(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn up(path: &Path, timeout: Option<u64>, count: Option<usize>, _diff: bool, dry: bool, yes: bool) -> Result<()> {
+pub async fn up(
+    path: &Path,
+    timeout: Option<u64>,
+    count: Option<usize>,
+    _diff: bool,
+    dry: bool,
+    yes: bool,
+) -> Result<()> {
     let config_content = std::fs::read_to_string(path)?;
     let with_version: WithVersion = toml::from_str(&config_content)?;
     with_version.validate(env!("CARGO_PKG_VERSION"))?;
     let cfg: Config = toml::from_str(&config_content)?;
     #[allow(unreachable_patterns)]
-    let config = match cfg.subsystem { crate::config::Subsystem::Sqlite(c) => c, _ => anyhow::bail!("expected sqlite config") };
+    let config = match cfg.subsystem {
+        | crate::config::Subsystem::Sqlite(c) => c,
+        | _ => anyhow::bail!("expected sqlite config"),
+    };
     let pool = build_pool_from_config(path, &config, true).await?;
-    let migration_dir = path.parent().ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
+    let migration_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
     let local_migrations = get_local_migrations(path)?;
     let effective_timeout = get_effective_timeout(&config, timeout);
 
@@ -385,8 +392,7 @@ pub async fn up(path: &Path, timeout: Option<u64>, count: Option<usize>, _diff: 
     // Commit the initial query transaction
     tx.commit().await?;
 
-    let mut migrations_to_apply: Vec<String> =
-        local_migrations.difference(&applied_migrations).cloned().collect();
+    let mut migrations_to_apply: Vec<String> = local_migrations.difference(&applied_migrations).cloned().collect();
 
     migrations_to_apply.sort();
 
@@ -397,10 +403,8 @@ pub async fn up(path: &Path, timeout: Option<u64>, count: Option<usize>, _diff: 
     };
 
     // Check for non-linear history
-    let out_of_order_migrations = crate::core::migration::check_non_linear_history(
-        &applied_migrations, 
-        &migrations_to_apply
-    );
+    let out_of_order_migrations =
+        crate::core::migration::check_non_linear_history(&applied_migrations, &migrations_to_apply);
     if !out_of_order_migrations.is_empty() {
         let max_applied = applied_migrations.iter().max().cloned().unwrap_or_default();
         if !crate::core::migration::handle_non_linear_warning(&out_of_order_migrations, &max_applied)? {
@@ -417,22 +421,24 @@ pub async fn up(path: &Path, timeout: Option<u64>, count: Option<usize>, _diff: 
         for migration_id in &migrations_to_apply {
             println!("  - {}", migration_id);
         }
-        
+
         let diff_fn = create_bulk_migrations_diff_fn(&migrations_to_apply, migration_dir);
-        
-        if !prompt_for_confirmation_with_diff("❓ Do you want to proceed with applying these migrations?", yes, diff_fn)? {
+
+        if !prompt_for_confirmation_with_diff(
+            "❓ Do you want to proceed with applying these migrations?",
+            yes,
+            diff_fn,
+        )? {
             println!("❌ Migration cancelled.");
             return Ok(());
         }
-        
+
         // Apply each migration in its own transaction
         for migration_id in &migrations_to_apply {
             println!("⏳ Applying migration: {}", migration_id);
             let id = migration_id.as_str();
 
-            let (up_sql, down_sql) = crate::core::migration::read_migration_files(
-                migration_dir, migration_id
-            )?;
+            let (up_sql, down_sql) = crate::core::migration::read_migration_files(migration_dir, migration_id)?;
 
             // Start a new transaction for this migration
             let mut migration_tx = pool.begin().await?;
@@ -453,7 +459,8 @@ pub async fn up(path: &Path, timeout: Option<u64>, count: Option<usize>, _diff: 
                 None, // comment not available in this legacy function
                 last_migration_id.as_deref(),
                 false, // locked not available in this legacy function
-            ).await?;
+            )
+            .await?;
 
             // Commit or rollback based on dry-run mode
             if dry {
@@ -476,17 +483,30 @@ pub async fn up(path: &Path, timeout: Option<u64>, count: Option<usize>, _diff: 
     Ok(())
 }
 
-pub async fn down(path: &Path, timeout: Option<u64>, count: Option<usize>, remote: bool, _diff: bool, dry: bool, yes: bool) -> Result<()> {
+pub async fn down(
+    path: &Path,
+    timeout: Option<u64>,
+    count: Option<usize>,
+    remote: bool,
+    _diff: bool,
+    dry: bool,
+    yes: bool,
+) -> Result<()> {
     let config_content = std::fs::read_to_string(path)?;
     let with_version: WithVersion = toml::from_str(&config_content)?;
     with_version.validate(env!("CARGO_PKG_VERSION"))?;
     let cfg: Config = toml::from_str(&config_content)?;
     #[allow(unreachable_patterns)]
-    let config = match cfg.subsystem { crate::config::Subsystem::Sqlite(c) => c, _ => anyhow::bail!("expected sqlite config") };
+    let config = match cfg.subsystem {
+        | crate::config::Subsystem::Sqlite(c) => c,
+        | _ => anyhow::bail!("expected sqlite config"),
+    };
     let pool = build_pool_from_config(path, &config, true).await?;
-    let migration_dir = path.parent().ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
+    let migration_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
     let effective_timeout = get_effective_timeout(&config, timeout);
-    
+
     let mut tx = pool.begin().await?;
 
     set_timeout_if_needed(&mut *tx, effective_timeout).await?;
@@ -511,23 +531,25 @@ pub async fn down(path: &Path, timeout: Option<u64>, count: Option<usize>, remot
             let id: String = row.get("id");
             println!("  - {}", id);
         }
-        
+
         let diff_fn = create_bulk_reverts_diff_fn(&migrations_to_revert, migration_dir, remote);
-        
-        if !prompt_for_confirmation_with_diff("❓ Do you want to proceed with reverting these migrations?", yes, diff_fn)? {
+
+        if !prompt_for_confirmation_with_diff(
+            "❓ Do you want to proceed with reverting these migrations?",
+            yes,
+            diff_fn,
+        )? {
             println!("❌ Revert cancelled.");
             return Ok(());
         }
-        
+
         // Revert each migration in its own transaction
         for row in migrations_to_revert {
             let id: String = row.get("id");
             let down_sql: String = if remote {
                 row.get("down")
             } else {
-                let (_up_sql, down_sql) = crate::core::migration::read_migration_files(
-                    migration_dir, &id
-                )?;
+                let (_up_sql, down_sql) = crate::core::migration::read_migration_files(migration_dir, &id)?;
                 down_sql
             };
             println!("Reverting migration: {}", id);
@@ -576,10 +598,15 @@ pub async fn list(path: &Path, migrations_table: &str, pool: &Pool<Sqlite>) -> R
         std::collections::HashMap::new()
     };
 
-    let mut remote: Vec<(String, chrono::NaiveDateTime, Option<String>, bool)> = applied_map.into_iter().map(|(id, (ts, comment, locked))| (id, ts, comment, locked)).collect();
+    let mut remote: Vec<(String, chrono::NaiveDateTime, Option<String>, bool)> = applied_map
+        .into_iter()
+        .map(|(id, (ts, comment, locked))| (id, ts, comment, locked))
+        .collect();
     remote.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let migration_dir = path.parent().ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
+    let migration_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
     crate::core::migration::render_migration_table(&local_migrations, &remote, migration_dir)?;
 
     tx.commit().await?;
@@ -594,7 +621,10 @@ pub async fn apply_up(path: &Path, id: &str, timeout: Option<u64>, dry: bool, ye
     with_version.validate(env!("CARGO_PKG_VERSION"))?;
     let cfg: Config = toml::from_str(&config_content)?;
     #[allow(unreachable_patterns)]
-    let config = match cfg.subsystem { crate::config::Subsystem::Sqlite(c) => c, _ => anyhow::bail!("expected sqlite config") };
+    let config = match cfg.subsystem {
+        | crate::config::Subsystem::Sqlite(c) => c,
+        | _ => anyhow::bail!("expected sqlite config"),
+    };
     let pool = build_pool_from_config(path, &config, true).await?;
     let effective_timeout = get_effective_timeout(&config, timeout);
     let migration_dir = path
@@ -629,8 +659,7 @@ pub async fn apply_up(path: &Path, id: &str, timeout: Option<u64>, dry: bool, ye
     // Check for non-linear history
     let mut needs_confirmation = false;
     if !applied_migrations.is_empty() {
-        let max_applied_migration =
-            applied_migrations.iter().max().cloned().unwrap_or_default();
+        let max_applied_migration = applied_migrations.iter().max().cloned().unwrap_or_default();
 
         if target_migration_id.as_str() < max_applied_migration.as_str() {
             println!("⚠️  Non-linear history detected!");
@@ -638,10 +667,7 @@ pub async fn apply_up(path: &Path, id: &str, timeout: Option<u64>, dry: bool, ye
                 "Applying migration {} would create a non-linear history.",
                 target_migration_id
             );
-            println!(
-                "Latest applied migration: {}",
-                max_applied_migration
-            );
+            println!("Latest applied migration: {}", max_applied_migration);
             println!();
             println!("This could cause issues with database schema consistency.");
             needs_confirmation = true;
@@ -651,25 +677,27 @@ pub async fn apply_up(path: &Path, id: &str, timeout: Option<u64>, dry: bool, ye
     if needs_confirmation {
         print!("Do you want to continue? [y/N]: ");
         io::stdout().flush()?;
-        
+
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim().to_lowercase();
-        
+
         if input != "y" && input != "yes" {
             println!("Operation cancelled.");
             return Ok(());
         }
     }
 
-    // Confirm migration application  
-    let (up_sql, down_sql) = crate::core::migration::read_migration_files(
-        migration_dir, &target_migration_id
-    )?;
-    
+    // Confirm migration application
+    let (up_sql, down_sql) = crate::core::migration::read_migration_files(migration_dir, &target_migration_id)?;
+
     let diff_fn = create_single_migration_diff_fn(&target_migration_id, &up_sql, "UP");
-    
-    if !prompt_for_confirmation_with_diff(&format!("❓ Do you want to apply migration '{}'?", target_migration_id), yes, diff_fn)? {
+
+    if !prompt_for_confirmation_with_diff(
+        &format!("❓ Do you want to apply migration '{}'?", target_migration_id),
+        yes,
+        diff_fn,
+    )? {
         println!("❌ Operation cancelled.");
         return Ok(());
     }
@@ -691,7 +719,7 @@ pub async fn apply_up(path: &Path, id: &str, timeout: Option<u64>, dry: bool, ye
     } else {
         println!("Applying migration: {}", target_migration_id);
     }
-    
+
     execute_sql_statements(&mut migration_tx, &up_sql, &target_migration_id).await?;
 
     insert_migration_record(
@@ -703,11 +731,15 @@ pub async fn apply_up(path: &Path, id: &str, timeout: Option<u64>, dry: bool, ye
         None, // comment not available in this legacy function
         last_migration_id.as_deref(),
         false, // locked not available in this legacy function
-    ).await?;
+    )
+    .await?;
 
     if dry {
         migration_tx.rollback().await?;
-        println!("🔄 Migration {} executed and rolled back (dry-run mode).", target_migration_id);
+        println!(
+            "🔄 Migration {} executed and rolled back (dry-run mode).",
+            target_migration_id
+        );
     } else {
         migration_tx.commit().await?;
         println!("✅ Migration {} applied successfully.", target_migration_id);
@@ -722,7 +754,10 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
     with_version.validate(env!("CARGO_PKG_VERSION"))?;
     let cfg: Config = toml::from_str(&config_content)?;
     #[allow(unreachable_patterns)]
-    let config = match cfg.subsystem { crate::config::Subsystem::Sqlite(c) => c, _ => anyhow::bail!("expected sqlite config") };
+    let config = match cfg.subsystem {
+        | crate::config::Subsystem::Sqlite(c) => c,
+        | _ => anyhow::bail!("expected sqlite config"),
+    };
     let pool = build_pool_from_config(path, &config, true).await?;
     let effective_timeout = get_effective_timeout(&config, timeout);
     let migration_dir = path
@@ -750,8 +785,7 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
     // Check for non-linear history (reverting a migration that's not the latest)
     let mut needs_confirmation = false;
     if !applied_migrations.is_empty() {
-        let max_applied_migration =
-            applied_migrations.iter().max().cloned().unwrap_or_default();
+        let max_applied_migration = applied_migrations.iter().max().cloned().unwrap_or_default();
 
         if target_migration_id != max_applied_migration {
             println!("⚠️  Non-linear history detected!");
@@ -759,10 +793,7 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
                 "Reverting migration {} would create a non-linear history.",
                 target_migration_id
             );
-            println!(
-                "Latest applied migration: {}",
-                max_applied_migration
-            );
+            println!("Latest applied migration: {}", max_applied_migration);
             println!();
             println!("This could cause issues with database schema consistency.");
             needs_confirmation = true;
@@ -772,11 +803,11 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
     if needs_confirmation {
         print!("Do you want to continue? [y/N]: ");
         io::stdout().flush()?;
-        
+
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim().to_lowercase();
-        
+
         if input != "y" && input != "yes" {
             println!("Operation cancelled.");
             return Ok(());
@@ -792,16 +823,18 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
         sql
     } else {
         // Get from local file via helper to ensure `id=` directory convention
-        let (_up_sql, down_sql) = crate::core::migration::read_migration_files(
-            migration_dir, &target_migration_id
-        )?;
+        let (_up_sql, down_sql) = crate::core::migration::read_migration_files(migration_dir, &target_migration_id)?;
         down_sql
     };
 
     // Confirm migration revert
     let diff_fn = create_single_migration_diff_fn(&target_migration_id, &down_sql, "DOWN");
-    
-    if !prompt_for_confirmation_with_diff(&format!("❓ Do you want to revert migration '{}'?", target_migration_id), yes, diff_fn)? {
+
+    if !prompt_for_confirmation_with_diff(
+        &format!("❓ Do you want to revert migration '{}'?", target_migration_id),
+        yes,
+        diff_fn,
+    )? {
         println!("❌ Operation cancelled.");
         return Ok(());
     }
@@ -816,14 +849,17 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
     } else {
         println!("Reverting migration: {}", target_migration_id);
     }
-    
+
     execute_sql_statements(&mut revert_tx, &down_sql, &target_migration_id).await?;
 
     delete_migration_record(&mut *revert_tx, &config.tables.migrations, &target_migration_id).await?;
 
     if dry {
         revert_tx.rollback().await?;
-        println!("🔄 Migration {} reverted and rolled back (dry-run mode).", target_migration_id);
+        println!(
+            "🔄 Migration {} reverted and rolled back (dry-run mode).",
+            target_migration_id
+        );
     } else {
         revert_tx.commit().await?;
         println!("✅ Migration {} reverted successfully.", target_migration_id);
@@ -833,7 +869,9 @@ pub async fn apply_down(path: &Path, id: &str, timeout: Option<u64>, remote: boo
 }
 
 pub async fn history_fix(path: &Path, migrations_table: &str, pool: &Pool<Sqlite>) -> Result<()> {
-    let migration_dir = path.parent().ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
+    let migration_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
     let local_migrations = get_local_migrations(path)?;
 
     let mut tx = pool.begin().await?;
@@ -883,8 +921,10 @@ pub async fn history_fix(path: &Path, migrations_table: &str, pool: &Pool<Sqlite
 }
 
 pub async fn history_sync(path: &Path, migrations_table: &str, pool: &Pool<Sqlite>) -> Result<()> {
-    let migration_dir = path.parent().ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
-    
+    let migration_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
+
     let mut tx = pool.begin().await?;
 
     // Get all migrations from the database
@@ -900,24 +940,16 @@ pub async fn history_sync(path: &Path, migrations_table: &str, pool: &Pool<Sqlit
 
             // Ensure local directory follows the "id=<id>" convention
             let migration_id_path = migration_dir.join(format!("id={}", id));
-            std::fs::create_dir_all(&migration_id_path).with_context(
-                || {
-                    format!(
-                        "Failed to create directory: {}",
-                        migration_id_path.display()
-                    )
-                },
-            )?;
+            std::fs::create_dir_all(&migration_id_path)
+                .with_context(|| format!("Failed to create directory: {}", migration_id_path.display()))?;
 
             let up_path = migration_id_path.join("up.sql");
             let down_path = migration_id_path.join("down.sql");
 
-            std::fs::write(&up_path, up_sql).with_context(|| {
-                format!("Failed to write up migration: {}", up_path.display())
-            })?;
-            std::fs::write(&down_path, down_sql).with_context(|| {
-                format!("Failed to write down migration: {}", down_path.display())
-            })?;
+            std::fs::write(&up_path, up_sql)
+                .with_context(|| format!("Failed to write up migration: {}", up_path.display()))?;
+            std::fs::write(&down_path, down_sql)
+                .with_context(|| format!("Failed to write down migration: {}", down_path.display()))?;
 
             println!("Synced migration: {}", id);
         }
@@ -929,7 +961,9 @@ pub async fn history_sync(path: &Path, migrations_table: &str, pool: &Pool<Sqlit
 }
 
 pub async fn diff(path: &Path, migrations_table: &str, pool: &Pool<Sqlite>) -> Result<()> {
-    let migration_dir = path.parent().ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
+    let migration_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("invalid migration path: {}", path.display()))?;
     let local_migrations = get_local_migrations(path)?;
 
     let mut tx = pool.begin().await?;
@@ -938,8 +972,7 @@ pub async fn diff(path: &Path, migrations_table: &str, pool: &Pool<Sqlite>) -> R
 
     tx.commit().await?;
 
-    let mut pending_migrations: Vec<String> =
-        local_migrations.difference(&applied_migrations).cloned().collect();
+    let mut pending_migrations: Vec<String> = local_migrations.difference(&applied_migrations).cloned().collect();
 
     pending_migrations.sort();
 
@@ -947,9 +980,7 @@ pub async fn diff(path: &Path, migrations_table: &str, pool: &Pool<Sqlite>) -> R
         println!("All migrations are up to date.");
     } else {
         for migration_id in &pending_migrations {
-            let (up_sql, _down_sql) = crate::core::migration::read_migration_files(
-                migration_dir, migration_id
-            )?;
+            let (up_sql, _down_sql) = crate::core::migration::read_migration_files(migration_dir, migration_id)?;
             // Render with same formatting as interactive 'd'
             crate::core::migration::display_sql_migration(migration_id, &up_sql, "UP")?;
         }

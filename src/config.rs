@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
 use semver::{Version, VersionReq};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -15,9 +15,8 @@ impl WithVersion {
         // }
 
         // Parse CLI version (Cargo semver)
-        let cli_version = Version::parse(cli)
-            .map_err(|e| anyhow::anyhow!("Invalid CLI version '{}': {}", cli, e))?;
-        
+        let cli_version = Version::parse(cli).map_err(|e| anyhow::anyhow!("Invalid CLI version '{}': {}", cli, e))?;
+
         // Parse version requirement from config (Cargo semver expressions)
         // Examples: ">=0.5.0, <0.6.0", "^0.5", "~0.5.2", "=0.5.3"
         let version_req = VersionReq::parse(&self.version)
@@ -26,8 +25,8 @@ impl WithVersion {
         // Check if CLI version matches the specification
         if !version_req.matches(&cli_version) {
             return Err(anyhow::anyhow!(
-                "Version mismatch: Config indicates required CLI version '{}', but current CLI version is '{}'", 
-                self.version, 
+                "Version mismatch: Config indicates required CLI version '{}', but current CLI version is '{}'",
+                self.version,
                 cli
             ));
         }
@@ -43,7 +42,6 @@ pub struct Config {
     pub subsystem: Subsystem,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(bound(serialize = "T: Serialize", deserialize = "T: DeserializeOwned"))]
@@ -57,6 +55,8 @@ pub enum DataSource<T: Serialize + DeserializeOwned> {
 pub enum Subsystem {
     #[cfg(feature = "sub+postgres")]
     Postgres(crate::subsystem::postgres::config::SubsystemPostgres),
+    #[cfg(feature = "sub+surrealdb")]
+    Surrealdb(crate::subsystem::surrealdb::config::SubsystemSurrealdb),
     #[cfg(feature = "sub+sqlite")]
     Sqlite(crate::subsystem::sqlite::config::SubsystemSqlite),
 }

@@ -18,7 +18,7 @@ The tool MUST provide layered safety mechanisms: confirmations, diff previews, d
 
 ### Mechanisms
 - Confirmations: Before executing, prompt with yes/no unless `--yes` is provided.
-- Diff previews: Allow users to preview raw SQL via `--diff` or interactive `d/diff` during prompt.
+- Diff previews: Allow users to preview raw migration content via `--diff` or interactive `d/diff` during prompt.
 - Dry-run: Execute migrations in a transaction and roll back; no persistent changes.
 - Locking: Respect `locked` flag from metadata and remote store; reverts require `--unlock`.
 
@@ -26,7 +26,7 @@ The tool MUST provide layered safety mechanisms: confirmations, diff previews, d
 
 ### Positive
 - Reduces risk of accidental schema changes
-- Enables review of SQL prior to execution
+- Enables review of migration content prior to execution
 - Supports safe testing of migrations in CI/CD
 
 ### Negative
@@ -40,6 +40,7 @@ The tool MUST provide layered safety mechanisms: confirmations, diff previews, d
 - Dry-run semantics:
   - Postgres: wrap in transaction and `rollback()` when `--dry`.
   - SQLite: wrap in transaction and `rollback()` when `--dry`.
+  - SurrealDB: wrap in SurrealQL transaction and `CANCEL TRANSACTION` when `--dry`.
 - Locking behavior:
   - Local `locked` from `meta.toml` is honored when applying (prevent accidental down-revert later when propagated).
   - Remote `locked` column in migrations table prevents revert unless `--unlock` is specified.
@@ -47,7 +48,7 @@ The tool MUST provide layered safety mechanisms: confirmations, diff previews, d
 ### CLI Flags
 - `--yes` / `-y`: skip confirmations.
 - `--dry`: execute within a transaction and rollback instead of commit.
-- `--diff`: preview SQL to be executed.
+- `--diff`: preview migration content to be executed.
 - `--unlock`: allow reverting a locked migration.
 
 ## References

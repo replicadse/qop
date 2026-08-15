@@ -1,8 +1,8 @@
 pub mod args;
-pub mod reference;
 pub mod config;
-pub mod subsystem;
 pub mod core;
+pub mod reference;
+pub mod subsystem;
 
 use {
     anyhow::{Context, Result},
@@ -33,9 +33,7 @@ async fn main() -> Result<()> {
             reference::build_shell_completion(&path, &shell)?;
             Ok(())
         },
-        | crate::args::Command::Subsystem(subsystem) => {
-            crate::subsystem::driver::dispatch(subsystem).await
-        },
+        | crate::args::Command::Subsystem(subsystem) => crate::subsystem::driver::dispatch(subsystem).await,
         // If command parsing evolves to allow no subcommand, we could default to interactive here
     }
 }

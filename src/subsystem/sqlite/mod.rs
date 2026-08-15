@@ -1,11 +1,11 @@
 pub mod commands;
+pub mod config;
 pub mod migration;
 #[cfg(feature = "sub+sqlite")]
 pub mod repo;
-pub mod config;
 
 #[cfg(feature = "sub+sqlite")]
-use crate::config::{Config, Subsystem, DataSource};
+use crate::config::{Config, DataSource, Subsystem};
 #[cfg(feature = "sub+sqlite")]
 use crate::subsystem::sqlite::config::SubsystemSqlite;
 

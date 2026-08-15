@@ -36,7 +36,10 @@ pub enum Output {
 #[derive(Debug)]
 pub enum Command {
     Init,
-    New { comment: Option<String>, locked: bool },
+    New {
+        comment: Option<String>,
+        locked: bool,
+    },
     Up {
         timeout: Option<u64>,
         count: Option<usize>,
@@ -54,7 +57,9 @@ pub enum Command {
         unlock: bool,
     },
     Apply(MigrationApply),
-    List { output: Output },
+    List {
+        output: Output,
+    },
     History(HistoryCommand),
     Diff,
     Config(ConfigCommand),

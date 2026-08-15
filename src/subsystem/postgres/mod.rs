@@ -1,10 +1,10 @@
 pub mod commands;
+pub mod config;
 pub mod migration;
 pub mod repo;
-pub mod config;
 
 #[cfg(feature = "sub+postgres")]
-use crate::config::{Config, Subsystem, DataSource};
+use crate::config::{Config, DataSource, Subsystem};
 #[cfg(feature = "sub+postgres")]
 use crate::subsystem::postgres::config::SubsystemPostgres;
 
